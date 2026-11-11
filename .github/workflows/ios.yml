@@ -23,12 +23,12 @@ concurrency:
 
 jobs:
   unsigned-ipa:
-    runs-on: macos-15-large-large-large
+    runs-on: macos-14-large-large
     steps:
       - uses: actions/checkout@v4
 
-      # Liquid Glass 的系统层效果（键盘/分享面板/上下文菜单）需要用 iOS 26 SDK
-      # 构建；runner 上选最新的稳定 Xcode。
+      # 选 runner 上最新的稳定 Xcode（iOS 26 SDK 时系统层自动获得原生 Liquid Glass；
+      # 较旧 SDK 也能构建，liquid_glass_renderer 是 Flutter 着色器不依赖原生 SDK 版本）。
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable

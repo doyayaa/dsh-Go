@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
+import '../../platform_caps.dart';
 import '../../runtime/local_footprint.dart';
 import '../../runtime/runtime_state.dart';
 import '../../state/account_state.dart';
@@ -166,13 +167,15 @@ class SettingsScreen extends ConsumerWidget {
         SettingsSection(
           title: l10n.hubGroupCapabilities,
           children: [
-            SettingsTile(
-              icon: AppIcons.phoneControl,
-              tint: SettingsHues.abilities,
-              spot: SettingsIndex.entry(SettingsPageId.phone),
-              value: text(phoneValue, color: phoneValue == l10n.hubValueOneStep ? colors.warning : null),
-              onTap: () => _push(context, const PhoneControlScreen()),
-            ),
+            // iOS 没有无障碍/ADB 操控（docs/ios-port-notes.md）。
+            if (!isIosPort)
+              SettingsTile(
+                icon: AppIcons.phoneControl,
+                tint: SettingsHues.abilities,
+                spot: SettingsIndex.entry(SettingsPageId.phone),
+                value: text(phoneValue, color: phoneValue == l10n.hubValueOneStep ? colors.warning : null),
+                onTap: () => _push(context, const PhoneControlScreen()),
+              ),
             SettingsTile(
               icon: AppIcons.webSearch,
               tint: SettingsHues.abilities,
@@ -238,22 +241,25 @@ class SettingsScreen extends ConsumerWidget {
             const NotificationSettingsTile(tint: SettingsHues.general),
             const VoiceSettingsTile(tint: SettingsHues.general),
             const PerformanceSettingsTile(tint: SettingsHues.general),
-            SettingsTile(
-              icon: AppIcons.keepAlive,
-              tint: SettingsHues.general,
-              spot: SettingsIndex.entry(SettingsPageId.background),
-              value: text(
-                exempt == null ? null : (exempt ? l10n.hubValueAllowed : l10n.hubValueNeedsSetup),
-                color: exempt == false ? colors.warning : null,
+            // iOS：无后台保活/无障碍引导，两项都是 Android 专属。
+            if (!isIosPort)
+              SettingsTile(
+                icon: AppIcons.keepAlive,
+                tint: SettingsHues.general,
+                spot: SettingsIndex.entry(SettingsPageId.background),
+                value: text(
+                  exempt == null ? null : (exempt ? l10n.hubValueAllowed : l10n.hubValueNeedsSetup),
+                  color: exempt == false ? colors.warning : null,
+                ),
+                onTap: () => _push(context, const BackgroundGuidePage()),
               ),
-              onTap: () => _push(context, const BackgroundGuidePage()),
-            ),
-            SettingsTile(
-              icon: AppIcons.systemAccess,
-              tint: SettingsHues.general,
-              spot: SettingsIndex.entry(SettingsPageId.systemAccess),
-              onTap: () => _push(context, const SystemAccessPage()),
-            ),
+            if (!isIosPort)
+              SettingsTile(
+                icon: AppIcons.systemAccess,
+                tint: SettingsHues.general,
+                spot: SettingsIndex.entry(SettingsPageId.systemAccess),
+                onTap: () => _push(context, const SystemAccessPage()),
+              ),
             SettingsTile(
               icon: AppIcons.privacy,
               tint: SettingsHues.general,
@@ -265,13 +271,15 @@ class SettingsScreen extends ConsumerWidget {
         SettingsSection(
           title: l10n.hubGroupHosts,
           children: [
-            SettingsTile(
-              icon: AppIcons.engine,
-              tint: SettingsHues.hosts,
-              spot: SettingsIndex.entry(SettingsPageId.engine),
-              value: StatusChip(tone: engine.tone, label: engine.label),
-              onTap: () => _push(context, const EngineScreen()),
-            ),
+            // iOS：本机引擎页无意义，隐藏（远程主机 tile 保留）。
+            if (!isIosPort)
+              SettingsTile(
+                icon: AppIcons.engine,
+                tint: SettingsHues.hosts,
+                spot: SettingsIndex.entry(SettingsPageId.engine),
+                value: StatusChip(tone: engine.tone, label: engine.label),
+                onTap: () => _push(context, const EngineScreen()),
+              ),
             SettingsTile(
               icon: AppIcons.remoteHosts,
               tint: SettingsHues.hosts,
@@ -469,7 +477,7 @@ class _SettingsOverviewState extends ConsumerState<SettingsOverview> {
           tone: engine.tone,
           text: [l10n.hubSettingsEngine, engine.label, if (dsh != null) 'DSH $dsh'].join(' · '),
         ),
-        onFooterTap: () => _push(const EngineScreen()),
+        onFooterTap: () => _push(isIosPort ? const RemoteScreen() : const EngineScreen()),
       ),
     );
   }

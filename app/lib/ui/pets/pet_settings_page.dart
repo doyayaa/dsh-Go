@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
+import '../../platform_caps.dart';
 import '../../pets/pet_prefs.dart';
 import '../../pets/pet_signals.dart';
 import '../../pets/pet_state.dart';
@@ -88,8 +89,8 @@ class PetSettingsPage extends ConsumerWidget {
                     ),
                 ],
               ),
-              // App 外显示 (the overlay).
-              const PetOverlaySettingsSection(),
+              // App 外显示 (the overlay)。iOS 没有 App 外悬浮窗。
+              if (!isIosPort) const PetOverlaySettingsSection(),
             ],
           ),
         ),

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../launch/launch_state.dart';
+import '../../platform_caps.dart';
 import '../../runtime/local_footprint.dart';
 import '../../diagnostics/diagnostics_publish.dart';
 import '../../runtime/runtime_bridge.dart';
@@ -40,14 +41,18 @@ import 'usage_upgrade_notice.dart';
 /// - Runtime ready but nothing to talk to (no DeepSeek key, no custom provider
 ///   on the local engine), and the user never chose "稍后设置" → key entry.
 /// - Otherwise → home (`null`).
+///
+/// `remoteOnly`（iOS 移植版）没有本机引擎：never onboards onto it —
+/// straight home, where the remote empty state asks for a host.
 OnboardingStep? initialOnboardingStep({
   required RuntimeStatus status,
   required bool hasApiKey,
   required OnboardingPrefs prefs,
   bool hasCustomProvider = false,
+  bool remoteOnly = false,
 }) {
   final installedCurrent = status.installedVersion != null && status.installedVersion == status.bundledVersion;
-  final needsRuntime = switch (status.phase) {
+  final needsRuntime = !remoteOnly && switch (status.phase) {
     RuntimePhase.notInstalled || RuntimePhase.installing => true,
     RuntimePhase.error => !installedCurrent,
     _ => false,
@@ -291,6 +296,7 @@ class _RootGateState extends ConsumerState<RootGate> {
     ref.listen(localRuntimeProvider.select((s) => s.status.phase), (prev, next) {
       if (_decided &&
           _step == null &&
+          !isIosPort &&
           next == RuntimePhase.notInstalled &&
           prev != RuntimePhase.notInstalled &&
           !ref.read(onboardingPrefsProvider).localDeclined) {
@@ -334,8 +340,9 @@ class _RootGateState extends ConsumerState<RootGate> {
           hasApiKey: settings.hasApiKey,
           hasCustomProvider: settings.customProviderIds.isNotEmpty,
           prefs: prefs,
+          remoteOnly: isIosPort,
         );
-        _chooseRuntime = runtimeStepAsks(runtime.status);
+        _chooseRuntime = !isIosPort && runtimeStepAsks(runtime.status);
         // The choice shows what installing costs: read it before it opens.
         if (_chooseRuntime && _step != null) ref.read(localFootprintProvider);
         _resumeBeside(prefs.setupStep, runtime.status);
@@ -372,7 +379,10 @@ class _RootGateState extends ConsumerState<RootGate> {
       // this phone's engine finishes its motion first (or goes when the engine is up).
       _launchReady = true;
       WidgetsBinding.instance.addPostFrameCallback(
-        (_) => LaunchController.active.value?.ready(waitsForEngine: ref.read(activeHostProvider).isLocal),
+        (_) => LaunchController.active.value?.ready(
+          // iOS 没有本机引擎，永不等待它起来。
+          waitsForEngine: !isIosPort && ref.read(activeHostProvider).isLocal,
+        ),
       );
     }
     return AnimatedSwitcher(

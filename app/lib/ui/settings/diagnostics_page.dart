@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
 import '../../diagnostics/diagnostics_publish.dart';
+import '../../platform_caps.dart';
 import '../../diagnostics/redact.dart';
 import '../../diagnostics/system_ime_diagnostics.dart';
 import '../../runtime/runtime_state.dart';
@@ -240,16 +241,17 @@ class _SystemImeDiagnosticsSectionState extends ConsumerState<SystemImeDiagnosti
               value: DateTime.fromMillisecondsSinceEpoch(evidence.capturedAt).toString().split('.').first,
             ),
           if (evidence?.code == 'unavailable')
-            SettingsTile(
-              icon: AppIcons.permissions,
-              title: l10n.systemImePermissions,
-              subtitle: l10n.systemImePermissionsHint,
-              onTap: () {
-                _diagnostics.cancelPending();
-                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PhoneControlScreen()));
-              },
-              tinted: false,
-            ),
+            if (!isIosPort)
+              SettingsTile(
+                icon: AppIcons.permissions,
+                title: l10n.systemImePermissions,
+                subtitle: l10n.systemImePermissionsHint,
+                onTap: () {
+                  _diagnostics.cancelPending();
+                  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PhoneControlScreen()));
+                },
+                tinted: false,
+              ),
           SettingsTile(
             icon: AppIcons.clearAll,
             title: l10n.systemImeClear,

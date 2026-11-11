@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
+import '../../platform_caps.dart';
 import '../../runtime/runtime_bridge.dart';
 import '../../runtime/runtime_state.dart';
 import '../../runtime/local_footprint.dart';
@@ -823,7 +824,8 @@ class _EmptyState extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final host = ref.watch(activeHostProvider);
-    if (!host.isLocal) return _RemoteEmptyState(host: host);
+    // iOS 没有本机引擎：default host（local）也走远程空态，引导添加主机。
+    if (!host.isLocal || isIosPort) return _RemoteEmptyState(host: host);
     final status = ref.watch(localRuntimeProvider.select((s) => s.status));
     if (EngineFailureCard.visibleFor(status)) {
       return const SingleChildScrollView(padding: EdgeInsets.fromLTRB(10, 8, 10, 16), child: EngineFailureCard());

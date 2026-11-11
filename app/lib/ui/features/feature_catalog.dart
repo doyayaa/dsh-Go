@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
+import '../../platform_caps.dart';
 import '../../plugins/native/native_icons.dart';
 import '../../plugins/native/native_state.dart';
 import '../../plugins/seams/seams.dart';
@@ -398,14 +399,16 @@ final featureSections = <FeatureSection>[
       icon: AppIcons.permissions,
       native: (id) => PermissionPage(sessionId: id),
     ),
-    FeatureItem.localized(
-      id: 'phone',
-      title: (l10n) => l10n.catalogPhoneControl,
-      summary: (l10n) => l10n.catalogPhoneControlSummary,
-      icon: AppIcons.phoneControl,
-      tile: FeatureKind.phone,
-      native: (_) => const PhoneControlScreen(),
-    ),
+    // iOS 没有无障碍/ADB 操控（docs/ios-port-notes.md）。
+    if (!isIosPort)
+      FeatureItem.localized(
+        id: 'phone',
+        title: (l10n) => l10n.catalogPhoneControl,
+        summary: (l10n) => l10n.catalogPhoneControlSummary,
+        icon: AppIcons.phoneControl,
+        tile: FeatureKind.phone,
+        native: (_) => const PhoneControlScreen(),
+      ),
     FeatureItem.localized(
       id: 'remote',
       title: (l10n) => l10n.commonRemoteHost,

@@ -1,0 +1,78 @@
+# iOS 移植版构建（无签名 ipa，docs/ios-port-notes.md）。
+#
+# Flutter 官方只在 macOS 上构建 iOS；本 workflow 在 GitHub 的 macOS runner 上
+# 产出 `flutter build ios --no-codesign` 的无签名 .app，打包成 .ipa artifact，
+# 供 Sideloadly / AltStore / xtool 用 Apple ID 现场签名安装（免费账号 7 天有效）。
+#
+# 与上游 ci.yml 的关系：那是测试门禁（ubuntu）；这里只管出包。
+
+name: ios
+
+on:
+  push:
+    branches: [main, ios-port]
+    paths:
+      - 'app/**'
+      - 'packages/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unsigned-ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Liquid Glass 的系统层效果（键盘/分享面板/上下文菜单）需要用 iOS 26 SDK
+      # 构建；runner 上选最新的稳定 Xcode。
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.7
+          channel: stable
+          cache: true
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          flutter --version
+
+      - name: Resolve deps
+        working-directory: app
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze --no-fatal-infos
+
+      - name: Build iOS (release, unsigned)
+        working-directory: app
+        run: |
+          VERSION=$(awk '/^version:/{split($2,a,"+"); print a[1]}' pubspec.yaml)
+          flutter build ios --release --no-codesign \
+            --build-number=${{ github.run_number }} \
+            --dart-define=DSH_APP_VERSION=$VERSION+${{ github.run_number }}
+
+      - name: Package unsigned ipa
+        run: |
+          APP=app/build/ios/iphoneos/Runner.app
+          test -d "$APP" || { echo "Runner.app not found"; exit 1; }
+          rm -rf Payload DSH-Go-iOS-unsigned.ipa
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry DSH-Go-iOS-unsigned.ipa Payload
+          rm -rf Payload
+          ls -lh DSH-Go-iOS-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DSH-Go-iOS-unsigned
+          path: DSH-Go-iOS-unsigned.ipa
+          if-no-files-found: error

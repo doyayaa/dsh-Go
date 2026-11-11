@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../common/pressable.dart';
 import '../common/ui_trace.dart';
+import '../glass/ios_glass.dart';
 
 import 'motion.dart';
 import 'shapes.dart';
@@ -133,6 +134,19 @@ class GlassSurface extends StatelessWidget {
           onLongPress: onLongPress,
           child: Pressable(behavior: HitTestBehavior.translucent, child: content),
         ),
+      );
+    }
+
+    // iOS：整块交给 Liquid Glass 着色器（折射 + 霜化 + 光泽）。发光、模糊由
+    // 着色器统一完成；描边/填充/阴影的 BackdropFilter 路径只在其他平台走。
+    if (IosGlass.enabled && useBlur) {
+      final resolved = _radius.resolve(textDirection ?? TextDirection.ltr);
+      return IosGlass.surface(
+        circle: circle,
+        stadium: _isStadium,
+        borderRadius: circle ? null : resolved,
+        brightness: Theme.of(context).brightness,
+        child: content,
       );
     }
 

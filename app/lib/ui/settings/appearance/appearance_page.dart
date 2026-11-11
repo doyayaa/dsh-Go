@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/l10n.dart';
+import '../../../platform_caps.dart';
 import '../../../state/appearance_state.dart';
 import '../../../state/settings_state.dart';
 import '../../common/expand_reveal.dart';
@@ -92,13 +93,15 @@ class AppearancePage extends ConsumerWidget {
           title: l10n.pluginsFeatureIcons,
           children: [SpotAnchor(spot: Spots.tileStyle, child: const TileStylePicker())],
         ),
-        SettingsSection(
-          title: l10n.pluginsAppIcon,
-          children: [
-            SpotAnchor(spot: Spots.appIcon, child: const AppIconPicker()),
-            const IconShortcutTile(),
-          ],
-        ),
+        // iOS：无桌面图标别名/图片快捷方式（docs/ios-port-notes.md）。
+        if (!isIosPort)
+          SettingsSection(
+            title: l10n.pluginsAppIcon,
+            children: [
+              SpotAnchor(spot: Spots.appIcon, child: const AppIconPicker()),
+              const IconShortcutTile(),
+            ],
+          ),
         SettingsSection(
           title: l10n.launchScreenTitle,
           footer: Text(l10n.launchFooter),

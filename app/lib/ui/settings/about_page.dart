@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
+import '../../platform_caps.dart';
 import '../../state/app_info.dart';
 import '../../state/star_prompt.dart' show starLinkOpenerProvider;
 import '../../state/update_state.dart';
@@ -44,7 +45,8 @@ class AboutPage extends ConsumerWidget {
               spot: Spots.version,
               value: Text(version, style: AppType.tabular(theme.textTheme.bodyMedium!)),
             ),
-            const AppUpdateTiles(),
+            // iOS：无 APK 自更新（分发走 TestFlight/App Store 或重装）。
+            if (!isIosPort) const AppUpdateTiles(),
             SettingsTile(
               key: const ValueKey('settings-star'),
               spot: Spots.star,

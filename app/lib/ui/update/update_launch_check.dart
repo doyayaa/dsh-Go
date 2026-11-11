@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../platform_caps.dart';
 import '../../state/notify_state.dart' show launchNoticeShownProvider;
 import '../../state/update_state.dart';
 import 'update_sheet.dart';
@@ -30,8 +31,14 @@ class _UpdateLaunchCheckState extends ConsumerState<UpdateLaunchCheck> {
   @override
   void initState() {
     super.initState();
-    _timer = Timer(widget.delay, () => unawaited(_run()));
-    _lifecycle = AppLifecycleListener(onResume: () => unawaited(ref.read(appUpdateProvider.notifier).onAppResumed()));
+    // iOS 版没有 APK 自更新（docs/ios-port-notes.md）：不查、不提示。
+    if (!isIosPort) _timer = Timer(widget.delay, () => unawaited(_run()));
+    _lifecycle = AppLifecycleListener(
+      onResume: () {
+        if (isIosPort) return;
+        unawaited(ref.read(appUpdateProvider.notifier).onAppResumed());
+      },
+    );
   }
 
   @override

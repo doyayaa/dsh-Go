@@ -56,8 +56,8 @@ Dart 封装层既有的 MissingPluginException 降级路径原样保留。
 - Bundle ID `io.github.ccch1mneyyy.dsh`。
 - 构建：`.github/workflows/ios.yml` → macOS runner → `flutter build ios
   --release --no-codesign` → `DSH-Go-iOS-unsigned.ipa` artifact。
-- 本机开发（Linux）：`flutter analyze` + 非 golden 单测可跑；iOS 侧改动一律以
-  CI 产物为准。
+- 本机开发（Linux）：`flutter analyze` 可跑；widget 测试需 ≥2 GB 内存编译，
+  小内存机器以 CI 为准。packages 的 `dart test` 不受此限。
 
 ## 安装（无签名 ipa）
 

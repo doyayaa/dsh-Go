@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   unsigned-ipa:
-    runs-on: macos-15
+    runs-on: macos-15-large-large-large
     steps:
       - uses: actions/checkout@v4
 

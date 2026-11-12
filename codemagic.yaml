@@ -1,0 +1,55 @@
+# DSH Go iOS 移植版 — 无签名 ipa 构建（docs/ios-port-notes.md）。
+# Codemagic 免费 tier 的 mac_mini_m2 即可；无需 Apple 开发者证书。
+# 产物用 Sideloadly / xtool / AltStore 以 Apple ID 现场签名安装。
+
+workflows:
+  ios-unsigned:
+    name: iOS unsigned ipa
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    working_directory: app
+
+    environment:
+      flutter: 3.47.7
+      xcode: latest
+      cocoapods: default
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: ios-port
+          include: true
+      cancel_previous: true
+
+    scripts:
+      - name: Show toolchain
+        script: |
+          flutter --version
+          xcodebuild -version
+
+      - name: Resolve dependencies
+        script: flutter pub get
+
+      - name: Analyze
+        script: flutter analyze --no-fatal-infos
+
+      - name: Build iOS (release, unsigned)
+        script: |
+          VERSION=$(awk '/^version:/{split($2,a,"+"); print a[1]}' pubspec.yaml)
+          flutter build ios --release --no-codesign \
+            --build-number=$BUILD_NUMBER \
+            --dart-define=DSH_APP_VERSION=$VERSION+$BUILD_NUMBER
+
+      - name: Package unsigned ipa
+        script: |
+          APP=build/ios/iphoneos/Runner.app
+          test -d "$APP" || { echo "Runner.app not found"; exit 1; }
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry DSH-Go-iOS-unsigned.ipa Payload
+          rm -rf Payload
+          ls -lh DSH-Go-iOS-unsigned.ipa
+
+    artifacts:
+      - build/ios/iphoneos/DSH-Go-iOS-unsigned.ipa

@@ -89,17 +89,25 @@ workflows:
           bash tooling/ios/prepare-engine.sh
           ls -la app/ios/Engine | head -20
 
-      - name: Build the app for a device, unsigned
+      - name: Build the app for a device, unsigned (archive, signing off for all targets)
         script: |
           set -e
-          cd "$CM_BUILD_DIR/app"
-          bash ../tooling/ios/build.sh --release --no-codesign
+          cd "$CM_BUILD_DIR"
+          # 与仓库 check-archive.sh 同一路径：带引擎时 flutter 直接 device 构建会触发
+          # Development Team / 描述文件检查，改用 config-only + xcodebuild archive，
+          # 命令行全局关闭所有 target 的签名。
+          bash tooling/ios/build-phone-self-runner.sh
+          (cd app && flutter build ios --release --no-codesign --config-only)
+          mkdir -p "$RUNNER_TEMP"
+          xcodebuild archive -workspace app/ios/Runner.xcworkspace -scheme Runner -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
 
       - name: Wrap Runner.app into an unsigned IPA
         script: |
           set -e
           cd "$CM_BUILD_DIR"
-          APP="app/build/ios/iphoneos/Runner.app"
+          APP="$RUNNER_TEMP/Runner.xcarchive/Products/Applications/Runner.app"
           test -d "$APP" || { echo "Runner.app is missing; the build did not produce it."; exit 1; }
 
           OUT="$CM_BUILD_DIR/build/dsh-go"

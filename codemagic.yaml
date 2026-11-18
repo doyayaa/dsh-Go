@@ -107,11 +107,13 @@ workflows:
           mkdir -p "$OUT/Payload"
           cp -R "$APP" "$OUT/Payload/Runner.app"
 
-          # 未签名包不该带任何签名材料，发现就说明构建没按预期走。
-          if find "$OUT/Payload" -name _CodeSignature -print -quit | grep -q .; then
-            echo "The app carries a _CodeSignature; this is not an unsigned build."
+          # 未签名口径与仓库 check-archive.sh 一致：不含描述文件、无分发签名；
+          # --no-codesign 附带的 ad-hoc 签名结构（_CodeSignature）允许存在，重签时会被覆盖。
+          if find "$OUT/Payload" -name embedded.mobileprovision -print -quit | grep -q .; then
+            echo "The app embeds a provisioning profile; this is not an unsigned build."
             exit 1
           fi
+          echo "note: _CodeSignature dirs (ad-hoc structure, replaced when re-signing): $(find "$OUT/Payload" -name _CodeSignature -type d | wc -l | tr -d ' ')"
 
           cd "$OUT"
           /usr/bin/ditto -c -k --keepParent Payload DSH-Go-unsigned.ipa
@@ -123,7 +125,7 @@ workflows:
             echo "bundle id: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Payload/Runner.app/Info.plist 2>/dev/null || echo unknown)"
             echo "architecture: $(lipo -archs Payload/Runner.app/Runner 2>/dev/null || echo unknown)"
             echo "engine: prepared (on-device NodeMobile + iSH guest)"
-            echo "signed: no"
+            echo "signed: no distribution signature (re-sign with your Apple ID before install)"
             echo "ipa: $(du -h DSH-Go-unsigned.ipa | cut -f1)"
             echo "sha256: $(shasum -a 256 DSH-Go-unsigned.ipa | cut -d' ' -f1)"
           } > build-info.txt
@@ -179,10 +181,11 @@ workflows:
           mkdir -p "$OUT/Payload"
           cp -R "$APP" "$OUT/Payload/Runner.app"
 
-          if find "$OUT/Payload" -name _CodeSignature -print -quit | grep -q .; then
-            echo "The app carries a _CodeSignature; this is not an unsigned build."
+          if find "$OUT/Payload" -name embedded.mobileprovision -print -quit | grep -q .; then
+            echo "The app embeds a provisioning profile; this is not an unsigned build."
             exit 1
           fi
+          echo "note: _CodeSignature dirs (ad-hoc structure, replaced when re-signing): $(find "$OUT/Payload" -name _CodeSignature -type d | wc -l | tr -d ' ')"
 
           cd "$OUT"
           /usr/bin/ditto -c -k --keepParent Payload DSH-Go-unsigned.ipa
@@ -194,7 +197,7 @@ workflows:
             echo "bundle id: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Payload/Runner.app/Info.plist 2>/dev/null || echo unknown)"
             echo "architecture: $(lipo -archs Payload/Runner.app/Runner 2>/dev/null || echo unknown)"
             echo "engine: not prepared (remote hosts only)"
-            echo "signed: no"
+            echo "signed: no distribution signature (re-sign with your Apple ID before install)"
             echo "ipa: $(du -h DSH-Go-unsigned.ipa | cut -f1)"
             echo "sha256: $(shasum -a 256 DSH-Go-unsigned.ipa | cut -d' ' -f1)"
           } > build-info.txt

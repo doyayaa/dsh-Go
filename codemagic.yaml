@@ -62,6 +62,15 @@ workflows:
             meson==1.7.2 ninja==1.11.1.4
           echo "PATH=$(brew --prefix llvm)/bin:$(brew --prefix lld)/bin:$RUNNER_TEMP/ish-tools/bin:$PATH" >> "$CM_ENV"
 
+          # Xcode 的 Run Script 阶段（Embed DSH Engine 现编 iSH guest）用 Codemagic 固定 PATH，
+          # 不继承上面的 CM_ENV；该 PATH 含 $(brew --prefix)/bin。把锁定版工具软链进去，
+          # 否则 embed 阶段报 "rebuild tools missing: meson, ninja"。
+          BREW_BIN="$(brew --prefix)/bin"
+          ln -sf "$RUNNER_TEMP/ish-tools/bin/meson" "$BREW_BIN/meson"
+          ln -sf "$RUNNER_TEMP/ish-tools/bin/ninja" "$BREW_BIN/ninja"
+          ln -sf "$(brew --prefix llvm)/bin/clang" "$BREW_BIN/clang"
+          ln -sf "$(brew --prefix lld)/bin/ld.lld" "$BREW_BIN/ld.lld"
+
           # 手机侧 Rust 原生库（tooling/ios/build-phone-self-runner.sh）用固定工具链。
           if ! command -v cargo >/dev/null 2>&1; then
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$RUNNER_TEMP/rustup.sh"

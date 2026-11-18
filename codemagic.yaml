@@ -1,0 +1,207 @@
+# Codemagic CI —— dsh-go 的 iOS 未签名构建
+#
+# 产物：DSH-Go-unsigned.ipa，完全未签名。装到 iPhone 之前仍需用你自己的
+# Apple ID 签一次（Sideloadly / AltStore / Xcode 均可，免费 Personal Team 就行，
+# 签名 7 天有效）。Codemagic 只负责把它编译出来，不碰证书。
+#
+# 两个工作流，按需选一个：
+#   ios-unsigned-full  完整包：带本机引擎（NodeMobile + iSH Linux guest），
+#                      和仓库自带的 ci/ios-compile.yml 等价，首次约 60-90 分钟
+#   ios-unsigned-lite  轻量包：不准备本机引擎，App 只能连远程主机，约 15-25 分钟
+#
+# 构建机型：mac_mini_m2（免费额度可用）。开了付费额度可以换 mac_mini_m4 提速。
+# Xcode 26.6 与仓库 CI 一致；Flutter 3.47.7 与 app/pubspec.yaml、CI 锁定版本一致。
+
+workflows:
+  ios-unsigned-full:
+    name: iOS unsigned · full (on-device engine)
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      flutter: "3.47.7"
+      xcode: "26.6"
+      vars:
+        RUNNER_TEMP: "/tmp/dsh-ci"
+    cache:
+      cache_paths:
+        - $HOME/Library/Caches/dsh-ios-engine
+        - $HOME/Library/Caches/Homebrew
+        - $HOME/.cargo
+    scripts:
+      - name: Show the toolchain
+        script: |
+          set -e
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphone || true
+          flutter --version
+          python3 --version || true
+          echo "CM_BUILD_DIR=$CM_BUILD_DIR"
+
+      - name: Install the build tools (Python 3.11+, LLVM, lld, Meson, Ninja, Rust)
+        script: |
+          set -e
+          export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+          mkdir -p "$RUNNER_TEMP"
+
+          # prepare-engine 要求 Python >= 3.11；系统自带的常常更旧。
+          PY="$(command -v python3 || true)"
+          if [ -z "$PY" ] || ! "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+            brew list python@3.13 >/dev/null 2>&1 || brew install python@3.13
+            PY="$(brew --prefix python@3.13)/libexec/bin/python3"
+          fi
+          echo "PATH=$(dirname "$PY"):$PATH" >> "$CM_ENV"
+          echo "PYTHON=$PY" >> "$CM_ENV"
+
+          # iSH 内核要 LLVM 生成 ARM64 Linux VDSO，ld.lld 单独一个 formula；
+          # Meson / Ninja 用 CI 里锁定的版本。
+          brew list llvm >/dev/null 2>&1 || brew install llvm
+          brew list lld  >/dev/null 2>&1 || brew install lld
+          "$PY" -m venv "$RUNNER_TEMP/ish-tools"
+          "$RUNNER_TEMP/ish-tools/bin/pip" install --quiet --disable-pip-version-check \
+            meson==1.7.2 ninja==1.11.1.4
+          echo "PATH=$(brew --prefix llvm)/bin:$(brew --prefix lld)/bin:$RUNNER_TEMP/ish-tools/bin:$PATH" >> "$CM_ENV"
+
+          # 手机侧 Rust 原生库（tooling/ios/build-phone-self-runner.sh）用固定工具链。
+          if ! command -v cargo >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$RUNNER_TEMP/rustup.sh"
+            sh "$RUNNER_TEMP/rustup.sh" -y --profile minimal --default-toolchain none
+          fi
+          echo "PATH=$HOME/.cargo/bin:$PATH" >> "$CM_ENV"
+
+          "$PY" --version
+          "$(command -v cargo)" --version || true
+          "$(brew --prefix llvm)/bin/clang" --version | head -1
+
+      - name: Resolve Dart dependencies and generate the localizations
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          python3 app/tool/l10n_merge.py --no-gen
+          cd app
+          flutter pub get --enforce-lockfile
+          flutter gen-l10n
+
+      - name: Prepare the on-device engine (NodeMobile, runtime, native addons)
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          bash tooling/ios/prepare-engine.sh
+          ls -la app/ios/Engine | head -20
+
+      - name: Build the app for a device, unsigned
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR/app"
+          bash ../tooling/ios/build.sh --release --no-codesign
+
+      - name: Wrap Runner.app into an unsigned IPA
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          APP="app/build/ios/iphoneos/Runner.app"
+          test -d "$APP" || { echo "Runner.app is missing; the build did not produce it."; exit 1; }
+
+          OUT="$CM_BUILD_DIR/build/dsh-go"
+          rm -rf "$OUT"
+          mkdir -p "$OUT/Payload"
+          cp -R "$APP" "$OUT/Payload/Runner.app"
+
+          # 未签名包不该带任何签名材料，发现就说明构建没按预期走。
+          if find "$OUT/Payload" -name _CodeSignature -print -quit | grep -q .; then
+            echo "The app carries a _CodeSignature; this is not an unsigned build."
+            exit 1
+          fi
+
+          cd "$OUT"
+          /usr/bin/ditto -c -k --keepParent Payload DSH-Go-unsigned.ipa
+
+          {
+            echo "app: DSH Go"
+            echo "version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Payload/Runner.app/Info.plist 2>/dev/null || echo unknown)"
+            echo "build: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Payload/Runner.app/Info.plist 2>/dev/null || echo unknown)"
+            echo "bundle id: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Payload/Runner.app/Info.plist 2>/dev/null || echo unknown)"
+            echo "architecture: $(lipo -archs Payload/Runner.app/Runner 2>/dev/null || echo unknown)"
+            echo "engine: prepared (on-device NodeMobile + iSH guest)"
+            echo "signed: no"
+            echo "ipa: $(du -h DSH-Go-unsigned.ipa | cut -f1)"
+            echo "sha256: $(shasum -a 256 DSH-Go-unsigned.ipa | cut -d' ' -f1)"
+          } > build-info.txt
+
+          cat build-info.txt
+          ls -la
+
+    artifacts:
+      - build/dsh-go/DSH-Go-unsigned.ipa
+      - build/dsh-go/build-info.txt
+
+  ios-unsigned-lite:
+    name: iOS unsigned · lite (remote hosts only)
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      flutter: "3.47.7"
+      xcode: "26.6"
+      vars:
+        RUNNER_TEMP: "/tmp/dsh-ci"
+    scripts:
+      - name: Show the toolchain
+        script: |
+          set -e
+          sw_vers
+          xcodebuild -version
+          flutter --version
+
+      - name: Resolve Dart dependencies and generate the localizations
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          python3 app/tool/l10n_merge.py --no-gen
+          cd app
+          flutter pub get --enforce-lockfile
+          flutter gen-l10n
+
+      - name: Build the app for a device, unsigned (no on-device engine)
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR/app"
+          flutter build ios --release --no-codesign
+
+      - name: Wrap Runner.app into an unsigned IPA
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          APP="app/build/ios/iphoneos/Runner.app"
+          test -d "$APP" || { echo "Runner.app is missing; the build did not produce it."; exit 1; }
+
+          OUT="$CM_BUILD_DIR/build/dsh-go"
+          rm -rf "$OUT"
+          mkdir -p "$OUT/Payload"
+          cp -R "$APP" "$OUT/Payload/Runner.app"
+
+          if find "$OUT/Payload" -name _CodeSignature -print -quit | grep -q .; then
+            echo "The app carries a _CodeSignature; this is not an unsigned build."
+            exit 1
+          fi
+
+          cd "$OUT"
+          /usr/bin/ditto -c -k --keepParent Payload DSH-Go-unsigned.ipa
+
+          {
+            echo "app: DSH Go"
+            echo "version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Payload/Runner.app/Info.plist 2>/dev/null || echo unknown)"
+            echo "build: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Payload/Runner.app/Info.plist 2>/dev/null || echo unknown)"
+            echo "bundle id: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Payload/Runner.app/Info.plist 2>/dev/null || echo unknown)"
+            echo "architecture: $(lipo -archs Payload/Runner.app/Runner 2>/dev/null || echo unknown)"
+            echo "engine: not prepared (remote hosts only)"
+            echo "signed: no"
+            echo "ipa: $(du -h DSH-Go-unsigned.ipa | cut -f1)"
+            echo "sha256: $(shasum -a 256 DSH-Go-unsigned.ipa | cut -d' ' -f1)"
+          } > build-info.txt
+
+          cat build-info.txt
+          ls -la
+
+    artifacts:
+      - build/dsh-go/DSH-Go-unsigned.ipa
+      - build/dsh-go/build-info.txt
